@@ -124,7 +124,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
 import {
-  getDatabase, ref, set, get, onValue, off, remove
+  getDatabase, ref, set, get, onValue, off, remove, update
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
 
 const firebaseConfig = {
@@ -342,10 +342,12 @@ window.startQuiz = async () => {
 
 window.beginQuestion = async (idx) => {
   autoClosed = false;
-  await set(ref(db, "quizState/phase"), "question");
-  await set(ref(db, "quizState/currentIndex"), idx);
-  await set(ref(db, "quizState/votingOpen"), true);
-  await set(ref(db, "quizState/currentStartTime"), Date.now());
+  await update(ref(db, "quizState"), {
+    phase: "question",
+    currentIndex: idx,
+    votingOpen: true,
+    currentStartTime: Date.now(),
+  });
 };
 
 window.closeVoting = async () => {
@@ -362,8 +364,10 @@ window.closeVoting = async () => {
       answers[n] = { choice: a.choice, elapsedMs: Math.max(0, (a.ts || startTime) - startTime) };
     }
   });
-  await set(ref(db, `quizState/results/${idx}`), { counts, answers, total: Object.keys(val).length, timeLimit: q.timeLimit || 20 });
-  await set(ref(db, "quizState/votingOpen"), false);
+  await update(ref(db, "quizState"), {
+    [`results/${idx}`]: { counts, answers, total: Object.keys(val).length, timeLimit: q.timeLimit || 20 },
+    votingOpen: false,
+  });
 };
 
 window.finishQuiz = async () => { await set(ref(db, "quizState/phase"), "finished"); };
