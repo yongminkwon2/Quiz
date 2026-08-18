@@ -152,6 +152,9 @@ let answersListenerRef = null;
 let participantsListenerRef = null;
 let timerInterval = null;
 let remainingSec = 0;
+let showAdminLogin = false;
+let adminLoginError = false;
+const ADMIN_PASSWORD = "2637";
 
 function emptyQuestion() {
   return { text: "", options: ["선택지 1", "선택지 2", "선택지 3", "선택지 4"], correctIndex: null, timeLimit: 20 };
@@ -269,6 +272,24 @@ function esc(s) { const d = document.createElement("div"); d.innerText = s; retu
 // ---------- actions ----------
 window.pickRole = (r) => { role = r; render(); };
 
+window.openAdminLogin = () => { showAdminLogin = true; adminLoginError = false; render(); };
+window.cancelAdminLogin = () => { showAdminLogin = false; adminLoginError = false; render(); };
+window.submitAdminPassword = () => {
+  const input = document.getElementById("admin-pw-input");
+  const val = input ? input.value.trim() : "";
+  if (val === ADMIN_PASSWORD) {
+    showAdminLogin = false;
+    adminLoginError = false;
+    role = "admin";
+    render();
+  } else {
+    adminLoginError = true;
+    render();
+    const el = document.getElementById("admin-pw-input");
+    if (el) { el.value = ""; el.focus(); }
+  }
+};
+
 window.addDraftQuestion = () => { draftQuestions.push(emptyQuestion()); render(); };
 window.removeDraftQuestion = (i) => { draftQuestions.splice(i, 1); render(); };
 window.updateDraftText = (i, v) => { draftQuestions[i].text = v; };
@@ -359,16 +380,33 @@ function render() {
 function shell(inner) { app.innerHTML = inner; }
 
 function renderLanding() {
+  if (showAdminLogin) return renderAdminLogin();
   shell(`
     <div class="center" style="margin-top:24px;">
       <h1 class="display">알고리즘 워크샵 QUIZ</h1>
       <p>PPT 화면을 보며 함께 맞혀요</p>
     </div>
     <div class="card" style="display:flex;flex-direction:column;gap:12px;">
-      <button class="btn btn-primary" onclick="pickRole('admin')">▶ 관리자로 시작하기</button>
+      <button class="btn btn-primary" onclick="openAdminLogin()">▶ 관리자로 시작하기</button>
       <button class="btn btn-secondary" onclick="pickRole('participant')">👥 참가자로 입장하기</button>
     </div>
   `);
+}
+
+function renderAdminLogin() {
+  shell(`
+    <div class="card" style="display:flex;flex-direction:column;gap:14px;padding:40px 24px;">
+      <h1 class="display center">관리자 비밀번호</h1>
+      <input id="admin-pw-input" class="input" style="text-align:center;font-size:22px;letter-spacing:8px;${adminLoginError ? "border-color:var(--coral);" : ""}"
+        type="password" inputmode="numeric" maxlength="4" placeholder="••••"
+        onkeydown="if(event.key==='Enter') submitAdminPassword()" />
+      ${adminLoginError ? `<p class="center" style="color:var(--coral);font-size:13px;margin:0;">비밀번호가 올바르지 않아요</p>` : ""}
+      <button class="btn btn-primary" onclick="submitAdminPassword()">확인</button>
+      <button class="link-btn" style="justify-content:center;" onclick="cancelAdminLogin()">← 돌아가기</button>
+    </div>
+  `);
+  const el = document.getElementById("admin-pw-input");
+  if (el) el.focus();
 }
 
 function renderAdmin() {
