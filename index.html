@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>라이브 퀴즈</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg1: #0f1024;
+    --bg2: #1a1440;
+    --surface: rgba(49, 46, 129, 0.35);
+    --border: rgba(99, 102, 241, 0.35);
+    --gold: #fbbf24;
+    --coral: #fb7c4a;
+    --green: #4ade80;
+    --text: #f1f0fb;
+    --muted: #9490c0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: linear-gradient(to bottom, var(--bg1), var(--bg2));
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+  .display { font-family: 'Space Grotesk', sans-serif; }
+  #app { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 20px; }
+  .card {
+    background: var(--surface);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 24px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  }
+  .eyebrow {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.2em;
+    color: var(--gold); font-weight: 700; margin-bottom: 4px;
+  }
+  h1 { font-size: 28px; margin: 0; }
+  h2 { font-size: 19px; margin: 0 0 12px; }
+  p { color: var(--muted); line-height: 1.5; }
+  .btn {
+    width: 100%; padding: 14px 18px; border-radius: 12px; border: none;
+    font-weight: 700; font-size: 15px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: transform 0.1s ease, opacity 0.15s ease;
+    font-family: 'Inter', sans-serif;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.35; cursor: default; }
+  .btn-primary { background: var(--gold); color: #1e1b4b; }
+  .btn-secondary { background: rgba(67,56,202,0.5); color: var(--text); border: 1px solid var(--border); }
+  .btn-danger { background: var(--coral); color: white; }
+  .input {
+    width: 100%; padding: 12px 14px; border-radius: 10px;
+    background: rgba(15, 16, 36, 0.6); border: 1px solid var(--border);
+    color: var(--text); font-size: 15px; font-family: inherit;
+  }
+  .input:focus { outline: 2px solid var(--gold); }
+  .input-sm { padding: 8px 10px; font-size: 14px; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .qcard { display: flex; flex-direction: column; gap: 10px; }
+  .opt-row { display: flex; align-items: center; gap: 8px; }
+  .dot {
+    width: 32px; height: 32px; min-width: 32px; border-radius: 50%;
+    border: 2px solid #4338ca; display: flex; align-items: center; justify-content: center;
+    color: #4338ca; cursor: pointer; font-weight: bold; background: none;
+  }
+  .dot.on { background: var(--gold); border-color: var(--gold); color: #1e1b4b; }
+  .link-btn { background: none; border: none; color: var(--muted); font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  .link-btn:hover { color: var(--gold); }
+  .icon-btn { background:none; border:none; color:#6b7280; cursor:pointer; font-size:18px; }
+  .icon-btn:hover { color: var(--coral); }
+  .bigstat { font-size: 56px; font-weight: 700; color: var(--gold); text-align: center; margin: 12px 0; }
+  .center { text-align: center; }
+  .badge {
+    font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+  }
+  .badge.open { background: rgba(16,185,129,0.2); color: #6ee7b7; }
+  .badge.closed { background: rgba(251,124,74,0.2); color: #fdba8c; }
+  .bar-row { margin-bottom: 12px; }
+  .bar-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; color: var(--text); }
+  .bar-track { background: rgba(15,16,36,0.6); border-radius: 8px; height: 14px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 8px; transition: width 0.4s ease; }
+  .opt-btn {
+    text-align: left; padding: 14px 16px; border-radius: 12px; border: 2px solid var(--border);
+    background: rgba(15,16,36,0.5); color: var(--text); font-size: 15px; font-weight: 500;
+    cursor: pointer; width: 100%;
+  }
+  .opt-btn:disabled { cursor: default; opacity: 0.6; }
+  .opt-btn.selected { background: rgba(99,102,241,0.35); border-color: #818cf8; opacity: 1; }
+  .opt-btn.correct { background: rgba(251,191,36,0.2); border-color: var(--gold); color: #fde68a; opacity: 1; }
+  .board-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 16px; border-radius: 12px; background: rgba(15,16,36,0.5); margin-bottom: 8px;
+  }
+  .board-row.top { background: rgba(251,191,36,0.15); border: 1px solid rgba(251,191,36,0.5); }
+  .score { color: var(--gold); font-weight: 700; }
+  .timer-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 8px 0 16px; }
+  .timer-num { font-size: 40px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; }
+  .timer-track { width: 100%; height: 10px; background: rgba(15,16,36,0.6); border-radius: 8px; overflow: hidden; }
+  .timer-fill { height: 100%; border-radius: 8px; transition: width 0.15s linear, background-color 0.3s ease; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+import {
+  getDatabase, ref, set, get, onValue, off, remove
+} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAsrk5RiT9n5RdJEdi6D9QBbtjAxfeQmqk",
+  authDomain: "quiz-4b3cc.firebaseapp.com",
+  databaseURL: "https://quiz-4b3cc-default-rtdb.firebaseio.com/",
+  projectId: "quiz-4b3cc",
+  storageBucket: "quiz-4b3cc.firebasestorage.app",
+  messagingSenderId: "577242996470",
+  appId: "1:577242996470:web:cefff8d7631eb67f1016d7"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getDatabase(fbApp);
+
+const COLORS = ["#fbbf24", "#fb923c", "#818cf8", "#38bdf8", "#f472b6", "#4ade80"];
+const app = document.getElementById("app");
+
+// ---------- global state ----------
+let role = null;
+let quizState = null;
+let nickname = "";
+let joined = false;
+let selected = null;
+let submitted = false;
+let lastQKey = null;
+let draftQuestions = [emptyQuestion()];
+let liveCounts = [];
+let answeredCount = 0;
+let participantCount = 0;
+let autoClosed = false; // guard so the timer doesn't call closeVoting multiple times
+
+let answersListenerRef = null;
+let participantsListenerRef = null;
+let timerInterval = null;
+let remainingSec = 0;
+
+function emptyQuestion() {
+  return { text: "", options: ["선택지 1", "선택지 2", "선택지 3", "선택지 4"], correctIndex: null, timeLimit: 20 };
+}
+
+// ---------- scoring ----------
+// 정답이면 1000점에서 시작해 제한시간을 다 쓸수록 500점까지 줄어듦. 오답/무응답은 0점.
+function calcPoints(elapsedMs, timeLimitSec) {
+  const tlMs = Math.max(1, timeLimitSec * 1000);
+  const ratio = Math.min(1, Math.max(0, elapsedMs / tlMs));
+  return Math.round(1000 - ratio * 500);
+}
+
+// ---------- firebase realtime listeners ----------
+onValue(ref(db, "quizState"), (snap) => {
+  quizState = snap.val();
+  if (quizState && quizState.phase === "question") {
+    const key = quizState.sessionId + ":" + quizState.currentIndex;
+    if (lastQKey !== key) {
+      lastQKey = key;
+      selected = null;
+      submitted = false;
+      autoClosed = false;
+    }
+  }
+  manageListeners();
+  manageTimer();
+  render();
+});
+
+function manageListeners() {
+  if (participantsListenerRef) { off(participantsListenerRef); participantsListenerRef = null; }
+  if (quizState && quizState.phase === "lobby" && role === "admin") {
+    participantsListenerRef = ref(db, `participants/${quizState.sessionId}`);
+    onValue(participantsListenerRef, (snap) => {
+      const val = snap.val() || {};
+      participantCount = Object.keys(val).length;
+      render();
+    });
+  }
+  if (answersListenerRef) { off(answersListenerRef); answersListenerRef = null; }
+  if (quizState && quizState.phase === "question" && role === "admin") {
+    answersListenerRef = ref(db, `answers/${quizState.sessionId}/${quizState.currentIndex}`);
+    onValue(answersListenerRef, (snap) => {
+      const val = snap.val() || {};
+      const q = quizState.questions[quizState.currentIndex];
+      const counts = new Array(q.options.length).fill(0);
+      Object.values(val).forEach((a) => { if (typeof a.choice === "number") counts[a.choice]++; });
+      liveCounts = counts;
+      answeredCount = Object.keys(val).length;
+      render();
+    });
+  }
+}
+
+function manageTimer() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+  if (!quizState || quizState.phase !== "question" || !quizState.votingOpen || !quizState.currentStartTime) return;
+  const q = quizState.questions[quizState.currentIndex];
+  const tl = q.timeLimit || 20;
+  const tick = () => {
+    const elapsed = (Date.now() - quizState.currentStartTime) / 1000;
+    remainingSec = Math.max(0, tl - elapsed);
+    if (remainingSec <= 0) {
+      clearInterval(timerInterval); timerInterval = null;
+      if (role === "admin" && quizState.votingOpen && !autoClosed) {
+        autoClosed = true;
+        window.closeVoting();
+      }
+    }
+    render();
+  };
+  tick();
+  timerInterval = setInterval(tick, 150);
+}
+
+function timerColor(ratio) {
+  if (ratio > 0.5) return "var(--green)";
+  if (ratio > 0.2) return "var(--gold)";
+  return "var(--coral)";
+}
+
+function renderTimer(timeLimit) {
+  const ratio = timeLimit ? remainingSec / timeLimit : 0;
+  const pct = Math.max(0, Math.min(100, ratio * 100));
+  return `
+    <div class="timer-wrap">
+      <div class="timer-num" style="color:${timerColor(ratio)};">${Math.ceil(remainingSec)}</div>
+      <div class="timer-track"><div class="timer-fill" style="width:${pct}%;background:${timerColor(ratio)};"></div></div>
+    </div>
+  `;
+}
+
+function computeLeaderboard(qs) {
+  if (!qs) return [];
+  const scores = {};
+  const names = new Set();
+  Object.values(qs.results || {}).forEach((r) => Object.keys(r.answers || {}).forEach((n) => names.add(n)));
+  names.forEach((n) => (scores[n] = 0));
+  Object.entries(qs.results || {}).forEach(([qi, r]) => {
+    const q = qs.questions[qi];
+    if (q && q.correctIndex !== null && q.correctIndex !== undefined) {
+      Object.entries(r.answers || {}).forEach(([n, a]) => {
+        const isCorrect = a.choice === q.correctIndex;
+        const pts = isCorrect ? calcPoints(a.elapsedMs || 0, r.timeLimit || q.timeLimit || 20) : 0;
+        scores[n] = (scores[n] || 0) + pts;
+      });
+    }
+  });
+  return Object.entries(scores).map(([nickname, score]) => ({ nickname, score })).sort((a, b) => b.score - a.score);
+}
+
+function esc(s) { const d = document.createElement("div"); d.innerText = s; return d.innerHTML; }
+
+// ---------- actions ----------
+window.pickRole = (r) => { role = r; render(); };
+
+window.addDraftQuestion = () => { draftQuestions.push(emptyQuestion()); render(); };
+window.removeDraftQuestion = (i) => { draftQuestions.splice(i, 1); render(); };
+window.updateDraftText = (i, v) => { draftQuestions[i].text = v; };
+window.updateDraftTime = (i, v) => { draftQuestions[i].timeLimit = Math.max(5, Math.min(120, parseInt(v) || 20)); };
+window.updateDraftOption = (qi, oi, v) => { draftQuestions[qi].options[oi] = v; };
+window.addDraftOption = (qi) => {
+  if (draftQuestions[qi].options.length < 6) { draftQuestions[qi].options.push("선택지 " + (draftQuestions[qi].options.length + 1)); render(); }
+};
+window.removeDraftOption = (qi, oi) => {
+  const q = draftQuestions[qi];
+  if (q.options.length > 2) {
+    q.options.splice(oi, 1);
+    if (q.correctIndex === oi) q.correctIndex = null;
+    else if (q.correctIndex > oi) q.correctIndex -= 1;
+    render();
+  }
+};
+window.toggleCorrect = (qi, oi) => {
+  draftQuestions[qi].correctIndex = draftQuestions[qi].correctIndex === oi ? null : oi;
+  render();
+};
+
+window.startQuiz = async () => {
+  const sessionId = String(Date.now());
+  const state = { sessionId, phase: "lobby", questions: draftQuestions, currentIndex: -1, votingOpen: false, currentStartTime: null, results: {} };
+  await set(ref(db, "quizState"), state);
+};
+
+window.beginQuestion = async (idx) => {
+  autoClosed = false;
+  await set(ref(db, "quizState/phase"), "question");
+  await set(ref(db, "quizState/currentIndex"), idx);
+  await set(ref(db, "quizState/votingOpen"), true);
+  await set(ref(db, "quizState/currentStartTime"), Date.now());
+};
+
+window.closeVoting = async () => {
+  const idx = quizState.currentIndex;
+  const q = quizState.questions[idx];
+  const startTime = quizState.currentStartTime;
+  const snap = await get(ref(db, `answers/${quizState.sessionId}/${idx}`));
+  const val = snap.val() || {};
+  const counts = new Array(q.options.length).fill(0);
+  const answers = {};
+  Object.entries(val).forEach(([n, a]) => {
+    if (typeof a.choice === "number") {
+      counts[a.choice]++;
+      answers[n] = { choice: a.choice, elapsedMs: Math.max(0, (a.ts || startTime) - startTime) };
+    }
+  });
+  await set(ref(db, `quizState/results/${idx}`), { counts, answers, total: Object.keys(val).length, timeLimit: q.timeLimit || 20 });
+  await set(ref(db, "quizState/votingOpen"), false);
+};
+
+window.finishQuiz = async () => { await set(ref(db, "quizState/phase"), "finished"); };
+
+window.resetAll = async () => {
+  await remove(ref(db, "quizState"));
+  role = null; draftQuestions = [emptyQuestion()];
+  render();
+};
+
+window.joinQuiz = async () => {
+  const input = document.getElementById("nickname-input");
+  const name = input.value.trim();
+  if (!name || !quizState) return;
+  nickname = name;
+  await set(ref(db, `participants/${quizState.sessionId}/${name}`), { joinedAt: Date.now() });
+  joined = true;
+  render();
+};
+
+window.submitAnswer = async (idx) => {
+  if (!quizState.votingOpen || remainingSec <= 0) return;
+  selected = idx;
+  submitted = true;
+  await set(ref(db, `answers/${quizState.sessionId}/${quizState.currentIndex}/${nickname}`), { choice: idx, ts: Date.now() });
+  render();
+};
+
+// ---------- render ----------
+function render() {
+  if (!role) return renderLanding();
+  if (role === "admin") return renderAdmin();
+  return renderParticipant();
+}
+
+function shell(inner) { app.innerHTML = inner; }
+
+function renderLanding() {
+  shell(`
+    <div class="center" style="margin-top:24px;">
+      <h1 class="display">라이브 퀴즈</h1>
+      <p>PPT 화면을 보며 함께 맞혀요</p>
+    </div>
+    <div class="card" style="display:flex;flex-direction:column;gap:12px;">
+      <button class="btn btn-primary" onclick="pickRole('admin')">▶ 관리자로 시작하기</button>
+      <button class="btn btn-secondary" onclick="pickRole('participant')">👥 참가자로 입장하기</button>
+    </div>
+  `);
+}
+
+function renderAdmin() {
+  if (!quizState) return renderAdminSetup();
+  if (quizState.phase === "lobby") return renderAdminLobby();
+  if (quizState.phase === "question") return renderAdminQuestion();
+  if (quizState.phase === "finished") return renderAdminFinished();
+}
+
+function renderAdminSetup() {
+  const qHtml = draftQuestions.map((q, qi) => `
+    <div class="card qcard">
+      <div class="row" style="justify-content:space-between;">
+        <span class="display" style="color:var(--gold);font-weight:700;">문항 ${qi + 1}</span>
+        ${draftQuestions.length > 1 ? `<button class="icon-btn" onclick="removeDraftQuestion(${qi});render()">✕</button>` : ""}
+      </div>
+      <input class="input" placeholder="문항 설명(선택, 예: PPT 3번 그림)" value="${esc(q.text)}" oninput="updateDraftText(${qi}, this.value)" />
+      <div class="row">
+        <span style="font-size:13px;color:var(--muted);white-space:nowrap;">⏱ 제한시간(초)</span>
+        <input class="input input-sm" type="number" min="5" max="120" style="width:80px;" value="${q.timeLimit}" oninput="updateDraftTime(${qi}, this.value)" />
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${q.options.map((opt, oi) => `
+          <div class="opt-row">
+            <button class="dot ${q.correctIndex === oi ? "on" : ""}" onclick="toggleCorrect(${qi},${oi})">✓</button>
+            <input class="input" value="${esc(opt)}" oninput="updateDraftOption(${qi},${oi}, this.value)" />
+            ${q.options.length > 2 ? `<button class="icon-btn" onclick="removeDraftOption(${qi},${oi});render()">✕</button>` : ""}
+          </div>
+        `).join("")}
+      </div>
+      ${q.options.length < 6 ? `<button class="link-btn" onclick="addDraftOption(${qi})">+ 선택지 추가</button>` : ""}
+      <p style="font-size:11px;margin:0;">정답을 표시하면 빨리 맞힐수록 점수를 더 주는 방식으로 자동 채점돼요 (선택 사항)</p>
+    </div>
+  `).join("");
+
+  shell(`
+    <div>
+      <div class="eyebrow">관리자</div>
+      <h1 class="display">문항 만들기</h1>
+      <p style="font-size:14px;">그림은 PPT 화면에서 보여주고, 여기엔 선택지·제한시간만 등록하면 돼요.</p>
+    </div>
+    ${qHtml}
+    <button class="btn btn-secondary" onclick="addDraftQuestion()">+ 문항 추가</button>
+    <button class="btn btn-primary" onclick="startQuiz()">▶ 퀴즈 시작 (참가자 입장 열기)</button>
+  `);
+}
+
+function renderAdminLobby() {
+  shell(`
+    <div class="card center" style="padding:48px 24px;">
+      <div class="eyebrow">대기실</div>
+      <h1 class="display">참가자 입장 중</h1>
+      <div class="bigstat display">${participantCount}</div>
+      <p>명이 입장했어요</p>
+      <button class="btn btn-primary" onclick="beginQuestion(0)">▶ 문항 1 공개하기</button>
+    </div>
+  `);
+}
+
+function renderAdminQuestion() {
+  const idx = quizState.currentIndex;
+  const q = quizState.questions[idx];
+  const isLast = idx === quizState.questions.length - 1;
+  const isOpen = quizState.votingOpen;
+
+  let body;
+  if (isOpen) {
+    // 투표 중: 결과는 숨기고 타이머 + 응답 인원수만 표시
+    body = `
+      ${renderTimer(q.timeLimit || 20)}
+      <p class="center" style="font-size:14px;">지금까지 <strong style="color:var(--gold);">${answeredCount}</strong>명 응답</p>
+    `;
+  } else {
+    // 마감 후: 결과 공개
+    const max = Math.max(1, ...liveCounts);
+    const bars = q.options.map((opt, i) => {
+      const c = liveCounts[i] || 0;
+      const pct = Math.round((c / max) * 100);
+      const isCorrect = q.correctIndex === i;
+      return `
+        <div class="bar-row">
+          <div class="bar-label"><span>${esc(opt)}</span><span>${c}</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${isCorrect ? "var(--gold)" : COLORS[i % COLORS.length]};"></div></div>
+        </div>
+      `;
+    }).join("");
+    body = `${bars}<p class="center" style="font-size:13px;margin-top:4px;">총 ${answeredCount}명 응답</p>`;
+  }
+
+  shell(`
+    <div class="card">
+      <div class="row" style="justify-content:space-between;">
+        <div class="eyebrow" style="margin:0;">문항 ${idx + 1} / ${quizState.questions.length}</div>
+        <span class="badge ${isOpen ? "open" : "closed"}">${isOpen ? "투표 진행중" : "투표 마감"}</span>
+      </div>
+      ${q.text ? `<h2 class="display" style="margin-top:8px;">${esc(q.text)}</h2>` : "<div style='height:8px'></div>"}
+      ${body}
+      <div style="margin-top:16px;">
+        ${isOpen
+          ? `<button class="btn btn-danger" onclick="closeVoting()">■ 지금 바로 마감</button>`
+          : isLast
+            ? `<button class="btn btn-primary" onclick="finishQuiz()">🏆 최종 결과 보기</button>`
+            : `<button class="btn btn-primary" onclick="beginQuestion(${idx + 1})">다음 문항 →</button>`
+        }
+      </div>
+    </div>
+  `);
+}
+
+function renderAdminFinished() {
+  const board = computeLeaderboard(quizState);
+  const rows = board.map((p, i) => `
+    <div class="board-row ${i === 0 ? "top" : ""}">
+      <div class="row"><span>${i === 0 ? "👑" : (i + 1)}</span><span style="font-weight:600;">${esc(p.nickname)}</span></div>
+      <span class="score display">${p.score}점</span>
+    </div>
+  `).join("");
+
+  shell(`
+    <div class="card">
+      <div class="center" style="margin-bottom:16px;">
+        <div style="font-size:28px;">🏆</div>
+        <h1 class="display">최종 결과</h1>
+      </div>
+      ${board.length === 0
+        ? `<p class="center">정답이 설정된 문항이 없어 순위를 계산하지 않았어요.</p>`
+        : rows}
+    </div>
+    <button class="btn btn-secondary" onclick="resetAll()">↺ 새 퀴즈 만들기</button>
+  `);
+}
+
+function renderParticipant() {
+  if (!quizState) {
+    return shell(`<div class="card center" style="padding:48px 24px;"><p>아직 퀴즈가 준비되지 않았어요.<br/>관리자가 시작할 때까지 잠시만 기다려주세요.</p></div>`);
+  }
+  if (!joined) {
+    return shell(`
+      <div class="card" style="display:flex;flex-direction:column;gap:14px;padding:40px 24px;">
+        <h1 class="display center">닉네임을 입력하세요</h1>
+        <input id="nickname-input" class="input" style="text-align:center;font-size:17px;" placeholder="예: 별똥별" maxlength="12" onkeydown="if(event.key==='Enter') joinQuiz()" />
+        <button class="btn btn-primary" onclick="joinQuiz()">입장하기</button>
+      </div>
+    `);
+  }
+  if (quizState.phase === "lobby") {
+    return shell(`
+      <div class="card center" style="padding:48px 24px;">
+        <div style="font-size:26px;">👥</div>
+        <h1 class="display">${esc(nickname)}님, 입장 완료!</h1>
+        <p>곧 첫 문항이 시작돼요. 화면을 봐주세요.</p>
+      </div>
+    `);
+  }
+  if (quizState.phase === "question") {
+    const q = quizState.questions[quizState.currentIndex];
+    const isOpen = quizState.votingOpen && remainingSec > 0;
+    const revealCorrect = !quizState.votingOpen;
+    const optsHtml = q.options.map((opt, i) => {
+      const isSelected = selected === i;
+      const showCorrect = revealCorrect && q.correctIndex === i;
+      const cls = showCorrect ? "correct" : (isSelected ? "selected" : "");
+      return `<button class="opt-btn ${cls}" ${!isOpen ? "disabled" : ""} onclick="submitAnswer(${i})">${esc(opt)} ${showCorrect ? "✓" : ""}</button>`;
+    }).join("");
+    const msg = revealCorrect
+      ? "투표가 마감됐어요. 다음 문항을 기다려주세요."
+      : (submitted ? "제출 완료! 마감 전까지 선택을 바꿀 수 있어요." : "선택지를 눌러 제출하세요. 빠를수록 점수가 높아요!");
+    return shell(`
+      <div class="card">
+        <div class="eyebrow">문항 ${quizState.currentIndex + 1} / ${quizState.questions.length}</div>
+        ${q.text ? `<h2 class="display">${esc(q.text)}</h2>` : "<div style='height:8px'></div>"}
+        ${isOpen ? renderTimer(q.timeLimit || 20) : ""}
+        <div style="display:flex;flex-direction:column;gap:10px;">${optsHtml}</div>
+        <p class="center" style="font-size:13px;margin-top:16px;">${msg}</p>
+      </div>
+    `);
+  }
+  if (quizState.phase === "finished") {
+    const board = computeLeaderboard(quizState);
+    const my = board.find((b) => b.nickname === nickname);
+    const rank = board.findIndex((b) => b.nickname === nickname) + 1;
+    const top3 = board.slice(0, 3).map((p, i) => `
+      <div class="row" style="justify-content:space-between;padding:8px 4px;">
+        <span>${i === 0 ? "👑 " : ""}${esc(p.nickname)}</span><span class="score">${p.score}점</span>
+      </div>
+    `).join("");
+    return shell(`
+      <div class="card center" style="padding:32px 24px;">
+        <div style="font-size:26px;">🏆</div>
+        <h1 class="display">퀴즈 종료!</h1>
+        ${my ? `<p>${esc(nickname)}님은 <span class="score">${my.score}점</span>으로 <span class="score">${rank}등</span>이에요</p>` : `<p>수고하셨어요!</p>`}
+      </div>
+      ${board.length ? `<div class="card">${top3}</div>` : ""}
+    `);
+  }
+}
+
+render();
+</script>
+</body>
+</html>
