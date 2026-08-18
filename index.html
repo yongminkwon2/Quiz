@@ -561,7 +561,21 @@ function renderAdminQuestion() {
         </div>
       `;
     }).join("");
-    body = `${bars}<p class="center" style="font-size:13px;margin-top:4px;">총 ${answeredCount}명 응답</p>`;
+    const board = computeLeaderboard(quizState).slice(0, 8);
+    const boardHtml = board.length
+      ? `
+        <div style="margin-top:20px;">
+          <div class="eyebrow" style="margin-bottom:8px;">현재까지 순위</div>
+          ${board.map((p, i) => `
+            <div class="board-row ${i === 0 ? "top" : ""}">
+              <div class="row"><span>${i === 0 ? "👑" : (i + 1)}</span><span style="font-weight:600;">${esc(p.nickname)}</span></div>
+              <span class="score display">${p.score}점</span>
+            </div>
+          `).join("")}
+        </div>
+      `
+      : "";
+    body = `${bars}<p class="center" style="font-size:13px;margin-top:4px;">총 ${answeredCount}명 응답</p>${boardHtml}`;
   }
 
   shell(`
