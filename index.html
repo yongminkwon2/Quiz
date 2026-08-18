@@ -107,6 +107,15 @@
   .timer-num { font-size: 40px; font-weight: 700; font-family: 'Space Grotesk', sans-serif; }
   .timer-track { width: 100%; height: 10px; background: rgba(15,16,36,0.6); border-radius: 8px; overflow: hidden; }
   .timer-fill { height: 100%; border-radius: 8px; transition: width 0.15s linear, background-color 0.3s ease; }
+  .chat-list { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 4px 2px; margin-bottom: 12px; }
+  .chat-msg { background: rgba(15,16,36,0.5); border-radius: 10px; padding: 8px 12px; font-size: 14px; word-break: break-word; }
+  .chat-msg .name { color: var(--gold); font-weight: 700; margin-right: 6px; }
+  .chat-msg.admin { background: rgba(251,124,74,0.15); }
+  .chat-msg.admin .name { color: var(--coral); }
+  .chat-empty { text-align: center; color: var(--muted); font-size: 13px; padding: 12px 0; }
+  .chat-input-row { display: flex; gap: 8px; }
+  .chat-input-row .input { flex: 1; }
+  .chat-send-btn { width: auto; padding: 12px 16px; }
 </style>
 </head>
 <body>
@@ -150,6 +159,8 @@ let autoClosed = false; // guard so the timer doesn't call closeVoting multiple 
 
 let answersListenerRef = null;
 let participantsListenerRef = null;
+let chatListenerRef = null;
+let chatMessages = [];
 let timerInterval = null;
 let remainingSec = 0;
 let showAdminLogin = false;
@@ -194,6 +205,17 @@ function manageListeners() {
       participantCount = Object.keys(val).length;
       render();
     });
+  }
+  if (chatListenerRef) { off(chatListenerRef); chatListenerRef = null; }
+  if (quizState && quizState.phase === "lobby") {
+    chatListenerRef = ref(db, `chat/${quizState.sessionId}`);
+    onValue(chatListenerRef, (snap) => {
+      const val = snap.val() || {};
+      chatMessages = Object.values(val).sort((a, b) => a.ts - b.ts);
+      render();
+    });
+  } else {
+    chatMessages = [];
   }
   if (answersListenerRef) { off(answersListenerRef); answersListenerRef = null; }
   if (quizState && quizState.phase === "question" && role === "admin") {
@@ -352,6 +374,43 @@ window.resetAll = async () => {
   render();
 };
 
+window.sendChatMessage = async (inputId) => {
+  if (!quizState) return;
+  const input = document.getElementById(inputId);
+  const text = input ? input.value.trim() : "";
+  if (!text) return;
+  const isAdmin = role === "admin";
+  const sender = isAdmin ? "🛠 관리자" : nickname;
+  const key = Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+  await set(ref(db, `chat/${quizState.sessionId}/${key}`), {
+    nickname: sender,
+    text: text.slice(0, 200),
+    ts: Date.now(),
+    isAdmin,
+  });
+  if (input) input.value = "";
+};
+
+function renderChatBox(inputId) {
+  const list = chatMessages.length
+    ? chatMessages.map((m) => `
+        <div class="chat-msg ${m.isAdmin ? "admin" : ""}">
+          <span class="name">${esc(m.nickname)}</span><span>${esc(m.text)}</span>
+        </div>
+      `).join("")
+    : `<div class="chat-empty">아직 메시지가 없어요. 첫 인사를 남겨보세요!</div>`;
+  return `
+    <div class="card" style="padding:16px;">
+      <div class="chat-list" id="chat-scroll">${list}</div>
+      <div class="chat-input-row">
+        <input id="${inputId}" class="input" placeholder="메시지 입력..." maxlength="200"
+          onkeydown="if(event.key==='Enter'){ sendChatMessage('${inputId}'); }" />
+        <button class="btn btn-primary chat-send-btn" onclick="sendChatMessage('${inputId}')">전송</button>
+      </div>
+    </div>
+  `;
+}
+
 window.joinQuiz = async () => {
   const input = document.getElementById("nickname-input");
   const name = input.value.trim();
@@ -377,7 +436,11 @@ function render() {
   return renderParticipant();
 }
 
-function shell(inner) { app.innerHTML = inner; }
+function shell(inner) {
+  app.innerHTML = inner;
+  const chatBox = document.getElementById("chat-scroll");
+  if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
+}
 
 function renderLanding() {
   if (showAdminLogin) return renderAdminLogin();
@@ -456,13 +519,14 @@ function renderAdminSetup() {
 
 function renderAdminLobby() {
   shell(`
-    <div class="card center" style="padding:48px 24px;">
+    <div class="card center" style="padding:32px 24px;">
       <div class="eyebrow">대기실</div>
       <h1 class="display">참가자 입장 중</h1>
       <div class="bigstat display">${participantCount}</div>
       <p>명이 입장했어요</p>
-      <button class="btn btn-primary" onclick="beginQuestion(0)">▶ 문항 1 공개하기</button>
+      <button class="btn btn-primary" onclick="beginQuestion(0)">▶ 게임 시작하기</button>
     </div>
+    ${renderChatBox("admin-chat-input")}
   `);
 }
 
@@ -554,11 +618,12 @@ function renderParticipant() {
   }
   if (quizState.phase === "lobby") {
     return shell(`
-      <div class="card center" style="padding:48px 24px;">
+      <div class="card center" style="padding:32px 24px;">
         <div style="font-size:26px;">👥</div>
         <h1 class="display">${esc(nickname)}님, 입장 완료!</h1>
-        <p>곧 첫 문항이 시작돼요. 화면을 봐주세요.</p>
+        <p>곧 첫 문항이 시작돼요. 기다리는 동안 채팅해보세요.</p>
       </div>
+      ${renderChatBox("participant-chat-input")}
     `);
   }
   if (quizState.phase === "question") {
