@@ -304,10 +304,27 @@ function manageTimer() {
         window.closeVoting();
       }
     }
-    render();
+    const active = document.activeElement;
+    const isTyping = active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT");
+    if (isTyping && timerInterval) {
+      updateTimerDom(tl);
+    } else {
+      render();
+    }
   };
   tick();
   timerInterval = setInterval(tick, 150);
+}
+
+function updateTimerDom(timeLimit) {
+  const numEl = document.getElementById("timer-num-display");
+  const fillEl = document.getElementById("timer-fill-display");
+  if (!numEl && !fillEl) return;
+  const ratio = timeLimit ? remainingSec / timeLimit : 0;
+  const pct = Math.max(0, Math.min(100, ratio * 100));
+  const color = timerColor(ratio);
+  if (numEl) { numEl.textContent = Math.ceil(remainingSec); numEl.style.color = color; }
+  if (fillEl) { fillEl.style.width = pct + "%"; fillEl.style.background = color; }
 }
 
 function timerColor(ratio) {
@@ -321,8 +338,8 @@ function renderTimer(timeLimit) {
   const pct = Math.max(0, Math.min(100, ratio * 100));
   return `
     <div class="timer-wrap">
-      <div class="timer-num" style="color:${timerColor(ratio)};">${Math.ceil(remainingSec)}</div>
-      <div class="timer-track"><div class="timer-fill" style="width:${pct}%;background:${timerColor(ratio)};"></div></div>
+      <div class="timer-num" id="timer-num-display" style="color:${timerColor(ratio)};">${Math.ceil(remainingSec)}</div>
+      <div class="timer-track"><div class="timer-fill" id="timer-fill-display" style="width:${pct}%;background:${timerColor(ratio)};"></div></div>
     </div>
   `;
 }
