@@ -183,17 +183,24 @@ let manualParticipantAnswers = {};
 let manualAnswerDraft = "";
 
 function emptyQuestion() {
-  return { text: "", type: "mc", options: ["선택지 1", "선택지 2", "선택지 3", "선택지 4"], correctIndex: null, timeLimit: 20, basePoints: 1000, speedBonus: true };
+  return { text: "", type: "mc", options: ["선택지 1", "선택지 2", "선택지 3", "선택지 4"], correctIndex: null, timeLimit: 20, basePoints: 2, speedBonus: true };
 }
 
 // ---------- scoring ----------
-// 정답이면 배점(basePoints)에서 시작해 제한시간을 다 쓸수록 배점의 절반까지 줄어듦 (speedBonus가 꺼져있으면 항상 배점 그대로). 오답/무응답은 0점.
+// 정답이면 배점(1~10점)을 기본으로 받고, speedBonus가 켜져 있으면 빠르게 답할수록 0~1점 사이 보너스가 더해짐(0.1점 단위).
+// 예: 배점 2점 + 속도 보너스 0.2점 = 2.2점. speedBonus가 꺼져있으면 보너스 없이 배점만 그대로.
 function calcPoints(elapsedMs, timeLimitSec, basePoints, speedBonus) {
-  const bp = basePoints || 1000;
+  const bp = basePoints || 2;
   if (speedBonus === false) return bp;
   const tlMs = Math.max(1, timeLimitSec * 1000);
-  const ratio = Math.min(1, Math.max(0, elapsedMs / tlMs));
-  return Math.round(bp - ratio * (bp * 0.5));
+  const speedRatio = Math.min(1, Math.max(0, 1 - elapsedMs / tlMs));
+  const bonus = Math.round(speedRatio * 10) / 10;
+  return Math.round((bp + bonus) * 10) / 10;
+}
+
+function fmtScore(n) {
+  const r = Math.round(n * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }
 
 // ---------- firebase realtime listeners ----------
@@ -373,7 +380,7 @@ window.submitAdminPassword = () => {
 window.addDraftQuestion = () => { draftQuestions.push(emptyQuestion()); render(); };
 window.removeDraftQuestion = (i) => { draftQuestions.splice(i, 1); render(); };
 window.setDraftType = (i, type) => { draftQuestions[i].type = type; render(); };
-window.updateDraftPoints = (i, v) => { draftQuestions[i].basePoints = Math.max(10, Math.min(10000, parseInt(v) || 1000)); };
+window.updateDraftPoints = (i, v) => { draftQuestions[i].basePoints = Math.max(1, Math.min(10, parseInt(v) || 2)); };
 window.toggleDraftSpeedBonus = (i) => { draftQuestions[i].speedBonus = !draftQuestions[i].speedBonus; render(); };
 window.updateDraftText = (i, v) => { draftQuestions[i].text = v; };
 window.updateDraftTime = (i, v) => { draftQuestions[i].timeLimit = Math.max(5, Math.min(120, parseInt(v) || 20)); };
@@ -629,8 +636,8 @@ function renderAdminSetup() {
         ? `<p style="font-size:12px;margin:0;">이 문항은 정답이 없어요. 문항이 끝나면 관리자가 참가자별로 점수를 직접 입력해서 채점해요.</p>`
         : `
           <div class="row">
-            <span style="font-size:13px;color:var(--muted);white-space:nowrap;">🏆 배점(점)</span>
-            <input class="input input-sm" type="number" min="10" max="10000" step="10" style="width:90px;" value="${q.basePoints}" oninput="updateDraftPoints(${qi}, this.value)" />
+            <span style="font-size:13px;color:var(--muted);white-space:nowrap;">🏆 배점(1~10점)</span>
+            <input class="input input-sm" type="number" min="1" max="10" step="1" style="width:90px;" value="${q.basePoints}" oninput="updateDraftPoints(${qi}, this.value)" />
           </div>
           <div class="row" style="justify-content:space-between;">
             <span style="font-size:13px;color:var(--muted);">⚡ 빠른 정답 가산점</span>
@@ -640,7 +647,7 @@ function renderAdminSetup() {
             </div>
           </div>
           <p style="font-size:11px;margin:0;color:var(--muted);">
-            ${q.speedBonus ? `빨리 맞힐수록 최대 ${q.basePoints}점, 늦게 맞혀도 정답이면 최소 ${Math.round(q.basePoints / 2)}점을 받아요.` : `정답이면 시간과 무관하게 항상 ${q.basePoints}점을 받아요.`}
+            ${q.speedBonus ? `정답이면 기본 ${q.basePoints}점, 빠르게 답할수록 0~1점 사이 보너스가 더해져요 (예: ${q.basePoints}점 + 0.2점 = ${(q.basePoints + 0.2).toFixed(1)}점).` : `정답이면 시간과 무관하게 항상 ${q.basePoints}점을 받아요.`}
           </p>
           <div style="display:flex;flex-direction:column;gap:8px;">
             ${q.options.map((opt, oi) => `
@@ -708,7 +715,7 @@ function renderAdminQuestion() {
       const r = quizState.results[idx];
       const rows = Object.entries(r.manualScores || {})
         .sort((a, b) => b[1] - a[1])
-        .map(([n, s]) => `<div class="board-row"><span>${esc(n)}</span><span class="score display">${s}점</span></div>`)
+        .map(([n, s]) => `<div class="board-row"><span>${esc(n)}</span><span class="score display">${fmtScore(s)}점</span></div>`)
         .join("");
       const board = computeLeaderboard(quizState).slice(0, 8);
       const boardHtml = board.length
@@ -718,7 +725,7 @@ function renderAdminQuestion() {
             ${board.map((p, i) => `
               <div class="board-row ${i === 0 ? "top" : ""}">
                 <div class="row"><span>${i === 0 ? "👑" : (i + 1)}</span><span style="font-weight:600;">${esc(p.nickname)}</span></div>
-                <span class="score display">${p.score}점</span>
+                <span class="score display">${fmtScore(p.score)}점</span>
               </div>
             `).join("")}
           </div>
@@ -751,7 +758,7 @@ function renderAdminQuestion() {
           ${board.map((p, i) => `
             <div class="board-row ${i === 0 ? "top" : ""}">
               <div class="row"><span>${i === 0 ? "👑" : (i + 1)}</span><span style="font-weight:600;">${esc(p.nickname)}</span></div>
-              <span class="score display">${p.score}점</span>
+              <span class="score display">${fmtScore(p.score)}점</span>
             </div>
           `).join("")}
         </div>
@@ -789,7 +796,7 @@ function renderAdminFinished() {
   const rows = board.map((p, i) => `
     <div class="board-row ${i === 0 ? "top" : ""}">
       <div class="row"><span>${i === 0 ? "👑" : (i + 1)}</span><span style="font-weight:600;">${esc(p.nickname)}</span></div>
-      <span class="score display">${p.score}점</span>
+      <span class="score display">${fmtScore(p.score)}점</span>
     </div>
   `).join("");
 
@@ -883,14 +890,14 @@ function renderParticipant() {
     const rank = board.findIndex((b) => b.nickname === nickname) + 1;
     const top3 = board.slice(0, 3).map((p, i) => `
       <div class="row" style="justify-content:space-between;padding:8px 4px;">
-        <span>${i === 0 ? "👑 " : ""}${esc(p.nickname)}</span><span class="score">${p.score}점</span>
+        <span>${i === 0 ? "👑 " : ""}${esc(p.nickname)}</span><span class="score">${fmtScore(p.score)}점</span>
       </div>
     `).join("");
     return shell(`
       <div class="card center" style="padding:32px 24px;">
         <div style="font-size:26px;">🏆</div>
         <h1 class="display">퀴즈 종료!</h1>
-        ${my ? `<p>${esc(nickname)}님은 <span class="score">${my.score}점</span>으로 <span class="score">${rank}등</span>이에요</p>` : `<p>수고하셨어요!</p>`}
+        ${my ? `<p>${esc(nickname)}님은 <span class="score">${fmtScore(my.score)}점</span>으로 <span class="score">${rank}등</span>이에요</p>` : `<p>수고하셨어요!</p>`}
       </div>
       ${board.length ? `<div class="card">${top3}</div>` : ""}
     `);
