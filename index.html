@@ -123,6 +123,9 @@
     text-align: center; font-family: 'Inter', sans-serif;
   }
   .type-btn.active { background: rgba(251,191,36,0.2); border-color: var(--gold); color: var(--gold); font-weight: 700; }
+  textarea.input { resize: vertical; min-height: 90px; font-family: inherit; line-height: 1.5; }
+  .manual-row { margin-bottom: 12px; padding: 10px; background: rgba(15,16,36,0.4); border-radius: 10px; }
+  .manual-answer-text { font-size: 13px; margin: 6px 0 0; }
 </style>
 </head>
 <body>
@@ -176,6 +179,8 @@ const ADMIN_PASSWORD = "2637";
 let manualDraftIdx = null;
 let manualDraftScores = {};
 let manualParticipantNames = [];
+let manualParticipantAnswers = {};
+let manualAnswerDraft = "";
 
 function emptyQuestion() {
   return { text: "", type: "mc", options: ["선택지 1", "선택지 2", "선택지 3", "선택지 4"], correctIndex: null, timeLimit: 20 };
@@ -201,6 +206,7 @@ onValue(ref(db, "quizState"), (snap) => {
       autoClosed = false;
       manualDraftIdx = null;
       manualDraftScores = {};
+      manualAnswerDraft = "";
     }
   }
   manageListeners();
@@ -218,10 +224,18 @@ async function maybeLoadManualForm() {
   if (manualDraftIdx === idx) return;
   manualDraftIdx = idx;
   manualDraftScores = {};
-  const snap = await get(ref(db, `participants/${quizState.sessionId}`));
-  const val = snap.val() || {};
-  manualParticipantNames = Object.keys(val).sort();
-  manualParticipantNames.forEach((n) => { manualDraftScores[n] = 0; });
+  manualParticipantAnswers = {};
+  const [pSnap, aSnap] = await Promise.all([
+    get(ref(db, `participants/${quizState.sessionId}`)),
+    get(ref(db, `answers/${quizState.sessionId}/${idx}`)),
+  ]);
+  const pVal = pSnap.val() || {};
+  const aVal = aSnap.val() || {};
+  manualParticipantNames = Object.keys(pVal).sort();
+  manualParticipantNames.forEach((n) => {
+    manualDraftScores[n] = 0;
+    manualParticipantAnswers[n] = (aVal[n] && aVal[n].text) || "";
+  });
   render();
 }
 
@@ -252,10 +266,15 @@ function manageListeners() {
     onValue(answersListenerRef, (snap) => {
       const val = snap.val() || {};
       const q = quizState.questions[quizState.currentIndex];
-      const counts = new Array(q.options.length).fill(0);
-      Object.values(val).forEach((a) => { if (typeof a.choice === "number") counts[a.choice]++; });
-      liveCounts = counts;
-      answeredCount = Object.keys(val).length;
+      if (q.type === "manual") {
+        liveCounts = [];
+        answeredCount = Object.keys(val).length;
+      } else {
+        const counts = new Array(q.options.length).fill(0);
+        Object.values(val).forEach((a) => { if (typeof a.choice === "number") counts[a.choice]++; });
+        liveCounts = counts;
+        answeredCount = Object.keys(val).length;
+      }
       render();
     });
   }
@@ -428,14 +447,20 @@ window.saveManualScores = async (idx) => {
 function renderManualScoreForm(idx) {
   if (manualDraftIdx !== idx) return `<p class="center" style="font-size:13px;">참가자 목록 불러오는 중...</p>`;
   const rows = manualParticipantNames.length
-    ? manualParticipantNames.map((n, i) => `
-        <div class="row" style="justify-content:space-between;gap:10px;margin-bottom:8px;">
-          <span style="flex:1;">${esc(n)}</span>
-          <input class="input input-sm" style="width:90px;" type="number" min="0" step="1"
-            value="${manualDraftScores[n] ?? 0}"
-            oninput="updateManualScoreByIndex(${i}, this.value)" />
-        </div>
-      `).join("")
+    ? manualParticipantNames.map((n, i) => {
+        const ans = manualParticipantAnswers[n];
+        return `
+          <div class="manual-row">
+            <div class="row" style="justify-content:space-between;">
+              <span style="font-weight:600;">${esc(n)}</span>
+              <input class="input input-sm" style="width:80px;" type="number" min="0" step="1"
+                value="${manualDraftScores[n] ?? 0}"
+                oninput="updateManualScoreByIndex(${i}, this.value)" />
+            </div>
+            <p class="manual-answer-text" style="color:${ans ? "var(--text)" : "var(--muted)"};">${ans ? esc(ans) : "(제출한 답이 없어요)"}</p>
+          </div>
+        `;
+      }).join("")
     : `<p class="center" style="font-size:13px;">입장한 참가자가 없어요.</p>`;
   return `
     <div style="margin-top:8px;">${rows}</div>
@@ -496,6 +521,20 @@ window.joinQuiz = async () => {
   render();
 };
 
+window.updateManualAnswerDraft = (v) => { manualAnswerDraft = v; };
+
+window.submitManualAnswer = async () => {
+  if (!quizState.votingOpen || remainingSec <= 0) return;
+  const text = manualAnswerDraft.trim();
+  if (!text) return;
+  submitted = true;
+  await set(ref(db, `answers/${quizState.sessionId}/${quizState.currentIndex}/${nickname}`), {
+    text: text.slice(0, 300),
+    ts: Date.now(),
+  });
+  render();
+};
+
 window.submitAnswer = async (idx) => {
   if (!quizState.votingOpen || remainingSec <= 0) return;
   selected = idx;
@@ -512,9 +551,21 @@ function render() {
 }
 
 function shell(inner) {
+  const activeEl = document.activeElement;
+  const activeId = activeEl && activeEl.id;
+  const selStart = activeEl && typeof activeEl.selectionStart === "number" ? activeEl.selectionStart : null;
   app.innerHTML = inner;
   const chatBox = document.getElementById("chat-scroll");
   if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
+  if (activeId) {
+    const el = document.getElementById(activeId);
+    if (el && typeof el.focus === "function") {
+      el.focus();
+      if (selStart !== null && typeof el.setSelectionRange === "function") {
+        try { el.setSelectionRange(selStart, selStart); } catch (e) {}
+      }
+    }
+  }
 }
 
 function renderLanding() {
@@ -626,7 +677,7 @@ function renderAdminQuestion() {
   if (isOpen) {
     // 투표/답변 중: 결과는 숨기고 타이머만 표시
     body = isManual
-      ? `${renderTimer(q.timeLimit || 20)}<p class="center" style="font-size:14px;">참가자들이 답변을 준비하고 있어요. 준비되면 아래 버튼으로 채점을 시작하세요.</p>`
+      ? `${renderTimer(q.timeLimit || 20)}<p class="center" style="font-size:14px;">지금까지 <strong style="color:var(--gold);">${answeredCount}</strong>명 제출함</p>`
       : `
         ${renderTimer(q.timeLimit || 20)}
         <p class="center" style="font-size:14px;">지금까지 <strong style="color:var(--gold);">${answeredCount}</strong>명 응답</p>
@@ -767,13 +818,18 @@ function renderParticipant() {
 
     if (q.type === "manual") {
       const msg = isOpen
-        ? "화면을 보며 답변을 준비하세요. 관리자가 직접 채점해요."
+        ? (submitted ? "제출 완료! 마감 전까지 다시 수정해서 제출할 수 있어요." : "답을 작성하고 제출하세요.")
         : "관리자가 채점 중이에요. 잠시만 기다려주세요.";
       return shell(`
         <div class="card">
           <div class="eyebrow">문항 ${quizState.currentIndex + 1} / ${quizState.questions.length}</div>
           ${q.text ? `<h2 class="display">${esc(q.text)}</h2>` : "<div style='height:8px'></div>"}
           ${isOpen ? renderTimer(q.timeLimit || 20) : ""}
+          ${isOpen ? `
+            <textarea id="manual-answer-input" class="input" maxlength="300" placeholder="답을 입력하세요"
+              oninput="updateManualAnswerDraft(this.value)">${esc(manualAnswerDraft)}</textarea>
+            <button class="btn btn-primary" style="margin-top:10px;" onclick="submitManualAnswer()">제출하기</button>
+          ` : ""}
           <p class="center" style="font-size:13px;margin-top:16px;">${msg}</p>
         </div>
       `);
