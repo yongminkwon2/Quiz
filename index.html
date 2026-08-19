@@ -671,6 +671,9 @@ function renderAdminQuestion() {
         </div>
       `;
     }).join("");
+    const answerLine = (q.correctIndex !== null && q.correctIndex !== undefined)
+      ? `<p class="center" style="color:var(--gold);font-weight:700;font-size:15px;margin:0 0 12px;">🎯 정답: ${esc(q.options[q.correctIndex])}</p>`
+      : "";
     const board = computeLeaderboard(quizState).slice(0, 8);
     const boardHtml = board.length
       ? `
@@ -685,7 +688,7 @@ function renderAdminQuestion() {
         </div>
       `
       : "";
-    body = `${bars}<p class="center" style="font-size:13px;margin-top:4px;">총 ${answeredCount}명 응답</p>${boardHtml}`;
+    body = `${answerLine}${bars}<p class="center" style="font-size:13px;margin-top:4px;">총 ${answeredCount}명 응답</p>${boardHtml}`;
   }
 
   const showNextButtons = !isOpen && (!isManual || hasResult);
@@ -786,6 +789,9 @@ function renderParticipant() {
     const msg = revealCorrect
       ? "투표가 마감됐어요. 다음 문항을 기다려주세요."
       : (submitted ? "제출 완료! 마감 전까지 선택을 바꿀 수 있어요." : "선택지를 눌러 제출하세요. 빠를수록 점수가 높아요!");
+    const answerLine = (revealCorrect && q.correctIndex !== null && q.correctIndex !== undefined)
+      ? `<p class="center" style="color:var(--gold);font-weight:700;font-size:15px;margin:8px 0 0;">🎯 정답: ${esc(q.options[q.correctIndex])}</p>`
+      : "";
     return shell(`
       <div class="card">
         <div class="eyebrow">문항 ${quizState.currentIndex + 1} / ${quizState.questions.length}</div>
@@ -793,6 +799,7 @@ function renderParticipant() {
         ${isOpen ? renderTimer(q.timeLimit || 20) : ""}
         <div style="display:flex;flex-direction:column;gap:10px;">${optsHtml}</div>
         <p class="center" style="font-size:13px;margin-top:16px;">${msg}</p>
+        ${answerLine}
       </div>
     `);
   }
