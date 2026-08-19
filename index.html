@@ -116,6 +116,13 @@
   .chat-input-row { display: flex; gap: 8px; }
   .chat-input-row .input { flex: 1; }
   .chat-send-btn { width: auto; padding: 12px 16px; }
+  .type-toggle { display: flex; gap: 8px; }
+  .type-btn {
+    flex: 1; padding: 8px; border-radius: 8px; border: 1px solid var(--border);
+    background: rgba(15,16,36,0.5); color: var(--muted); font-size: 13px; cursor: pointer;
+    text-align: center; font-family: 'Inter', sans-serif;
+  }
+  .type-btn.active { background: rgba(251,191,36,0.2); border-color: var(--gold); color: var(--gold); font-weight: 700; }
 </style>
 </head>
 <body>
@@ -166,9 +173,12 @@ let remainingSec = 0;
 let showAdminLogin = false;
 let adminLoginError = false;
 const ADMIN_PASSWORD = "2637";
+let manualDraftIdx = null;
+let manualDraftScores = {};
+let manualParticipantNames = [];
 
 function emptyQuestion() {
-  return { text: "", options: ["선택지 1", "선택지 2", "선택지 3", "선택지 4"], correctIndex: null, timeLimit: 20 };
+  return { text: "", type: "mc", options: ["선택지 1", "선택지 2", "선택지 3", "선택지 4"], correctIndex: null, timeLimit: 20 };
 }
 
 // ---------- scoring ----------
@@ -189,12 +199,31 @@ onValue(ref(db, "quizState"), (snap) => {
       selected = null;
       submitted = false;
       autoClosed = false;
+      manualDraftIdx = null;
+      manualDraftScores = {};
     }
   }
   manageListeners();
   manageTimer();
+  maybeLoadManualForm();
   render();
 });
+
+async function maybeLoadManualForm() {
+  if (!quizState || role !== "admin" || quizState.phase !== "question") return;
+  const idx = quizState.currentIndex;
+  const q = quizState.questions[idx];
+  if (!q || q.type !== "manual" || quizState.votingOpen) return;
+  if (quizState.results && quizState.results[idx]) return;
+  if (manualDraftIdx === idx) return;
+  manualDraftIdx = idx;
+  manualDraftScores = {};
+  const snap = await get(ref(db, `participants/${quizState.sessionId}`));
+  const val = snap.val() || {};
+  manualParticipantNames = Object.keys(val).sort();
+  manualParticipantNames.forEach((n) => { manualDraftScores[n] = 0; });
+  render();
+}
 
 function manageListeners() {
   if (participantsListenerRef) { off(participantsListenerRef); participantsListenerRef = null; }
@@ -274,11 +303,19 @@ function computeLeaderboard(qs) {
   if (!qs) return [];
   const scores = {};
   const names = new Set();
-  Object.values(qs.results || {}).forEach((r) => Object.keys(r.answers || {}).forEach((n) => names.add(n)));
+  Object.entries(qs.results || {}).forEach(([qi, r]) => {
+    Object.keys(r.answers || {}).forEach((n) => names.add(n));
+    Object.keys(r.manualScores || {}).forEach((n) => names.add(n));
+  });
   names.forEach((n) => (scores[n] = 0));
   Object.entries(qs.results || {}).forEach(([qi, r]) => {
     const q = qs.questions[qi];
-    if (q && q.correctIndex !== null && q.correctIndex !== undefined) {
+    if (!q) return;
+    if (q.type === "manual" && r.manualScores) {
+      Object.entries(r.manualScores).forEach(([n, pts]) => {
+        scores[n] = (scores[n] || 0) + (Number(pts) || 0);
+      });
+    } else if (q.correctIndex !== null && q.correctIndex !== undefined) {
       Object.entries(r.answers || {}).forEach(([n, a]) => {
         const isCorrect = a.choice === q.correctIndex;
         const pts = isCorrect ? calcPoints(a.elapsedMs || 0, r.timeLimit || q.timeLimit || 20) : 0;
@@ -314,6 +351,7 @@ window.submitAdminPassword = () => {
 
 window.addDraftQuestion = () => { draftQuestions.push(emptyQuestion()); render(); };
 window.removeDraftQuestion = (i) => { draftQuestions.splice(i, 1); render(); };
+window.setDraftType = (i, type) => { draftQuestions[i].type = type; render(); };
 window.updateDraftText = (i, v) => { draftQuestions[i].text = v; };
 window.updateDraftTime = (i, v) => { draftQuestions[i].timeLimit = Math.max(5, Math.min(120, parseInt(v) || 20)); };
 window.updateDraftOption = (qi, oi, v) => { draftQuestions[qi].options[oi] = v; };
@@ -353,6 +391,10 @@ window.beginQuestion = async (idx) => {
 window.closeVoting = async () => {
   const idx = quizState.currentIndex;
   const q = quizState.questions[idx];
+  if (q.type === "manual") {
+    await update(ref(db, "quizState"), { votingOpen: false });
+    return;
+  }
   const startTime = quizState.currentStartTime;
   const snap = await get(ref(db, `answers/${quizState.sessionId}/${idx}`));
   const val = snap.val() || {};
@@ -371,6 +413,35 @@ window.closeVoting = async () => {
 };
 
 window.finishQuiz = async () => { await set(ref(db, "quizState/phase"), "finished"); };
+
+window.updateManualScoreByIndex = (i, v) => {
+  const n = manualParticipantNames[i];
+  manualDraftScores[n] = Math.max(0, parseInt(v) || 0);
+};
+
+window.saveManualScores = async (idx) => {
+  await update(ref(db, "quizState"), {
+    [`results/${idx}`]: { type: "manual", manualScores: { ...manualDraftScores } },
+  });
+};
+
+function renderManualScoreForm(idx) {
+  if (manualDraftIdx !== idx) return `<p class="center" style="font-size:13px;">참가자 목록 불러오는 중...</p>`;
+  const rows = manualParticipantNames.length
+    ? manualParticipantNames.map((n, i) => `
+        <div class="row" style="justify-content:space-between;gap:10px;margin-bottom:8px;">
+          <span style="flex:1;">${esc(n)}</span>
+          <input class="input input-sm" style="width:90px;" type="number" min="0" step="1"
+            value="${manualDraftScores[n] ?? 0}"
+            oninput="updateManualScoreByIndex(${i}, this.value)" />
+        </div>
+      `).join("")
+    : `<p class="center" style="font-size:13px;">입장한 참가자가 없어요.</p>`;
+  return `
+    <div style="margin-top:8px;">${rows}</div>
+    <button class="btn btn-primary" style="margin-top:12px;" onclick="saveManualScores(${idx})">점수 확정</button>
+  `;
+}
 
 window.resetAll = async () => {
   await remove(ref(db, "quizState"));
@@ -490,22 +561,31 @@ function renderAdminSetup() {
         <span class="display" style="color:var(--gold);font-weight:700;">문항 ${qi + 1}</span>
         ${draftQuestions.length > 1 ? `<button class="icon-btn" onclick="removeDraftQuestion(${qi});render()">✕</button>` : ""}
       </div>
+      <div class="type-toggle">
+        <button class="type-btn ${q.type !== "manual" ? "active" : ""}" onclick="setDraftType(${qi},'mc')">객관식</button>
+        <button class="type-btn ${q.type === "manual" ? "active" : ""}" onclick="setDraftType(${qi},'manual')">수동 채점</button>
+      </div>
       <input class="input" placeholder="문항 설명(선택, 예: PPT 3번 그림)" value="${esc(q.text)}" oninput="updateDraftText(${qi}, this.value)" />
       <div class="row">
-        <span style="font-size:13px;color:var(--muted);white-space:nowrap;">⏱ 제한시간(초)</span>
+        <span style="font-size:13px;color:var(--muted);white-space:nowrap;">⏱ ${q.type === "manual" ? "준비 시간(초)" : "제한시간(초)"}</span>
         <input class="input input-sm" type="number" min="5" max="120" style="width:80px;" value="${q.timeLimit}" oninput="updateDraftTime(${qi}, this.value)" />
       </div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        ${q.options.map((opt, oi) => `
-          <div class="opt-row">
-            <button class="dot ${q.correctIndex === oi ? "on" : ""}" onclick="toggleCorrect(${qi},${oi})">✓</button>
-            <input class="input" value="${esc(opt)}" oninput="updateDraftOption(${qi},${oi}, this.value)" />
-            ${q.options.length > 2 ? `<button class="icon-btn" onclick="removeDraftOption(${qi},${oi});render()">✕</button>` : ""}
+      ${q.type === "manual"
+        ? `<p style="font-size:12px;margin:0;">이 문항은 정답이 없어요. 문항이 끝나면 관리자가 참가자별로 점수를 직접 입력해서 채점해요.</p>`
+        : `
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${q.options.map((opt, oi) => `
+              <div class="opt-row">
+                <button class="dot ${q.correctIndex === oi ? "on" : ""}" onclick="toggleCorrect(${qi},${oi})">✓</button>
+                <input class="input" value="${esc(opt)}" oninput="updateDraftOption(${qi},${oi}, this.value)" />
+                ${q.options.length > 2 ? `<button class="icon-btn" onclick="removeDraftOption(${qi},${oi});render()">✕</button>` : ""}
+              </div>
+            `).join("")}
           </div>
-        `).join("")}
-      </div>
-      ${q.options.length < 6 ? `<button class="link-btn" onclick="addDraftOption(${qi})">+ 선택지 추가</button>` : ""}
-      <p style="font-size:11px;margin:0;">정답을 표시하면 빨리 맞힐수록 점수를 더 주는 방식으로 자동 채점돼요 (선택 사항)</p>
+          ${q.options.length < 6 ? `<button class="link-btn" onclick="addDraftOption(${qi})">+ 선택지 추가</button>` : ""}
+          <p style="font-size:11px;margin:0;">정답을 표시하면 빨리 맞힐수록 점수를 더 주는 방식으로 자동 채점돼요 (선택 사항)</p>
+        `
+      }
     </div>
   `).join("");
 
@@ -539,16 +619,46 @@ function renderAdminQuestion() {
   const q = quizState.questions[idx];
   const isLast = idx === quizState.questions.length - 1;
   const isOpen = quizState.votingOpen;
+  const isManual = q.type === "manual";
+  const hasResult = !!(quizState.results && quizState.results[idx]);
 
   let body;
   if (isOpen) {
-    // 투표 중: 결과는 숨기고 타이머 + 응답 인원수만 표시
-    body = `
-      ${renderTimer(q.timeLimit || 20)}
-      <p class="center" style="font-size:14px;">지금까지 <strong style="color:var(--gold);">${answeredCount}</strong>명 응답</p>
-    `;
+    // 투표/답변 중: 결과는 숨기고 타이머만 표시
+    body = isManual
+      ? `${renderTimer(q.timeLimit || 20)}<p class="center" style="font-size:14px;">참가자들이 답변을 준비하고 있어요. 준비되면 아래 버튼으로 채점을 시작하세요.</p>`
+      : `
+        ${renderTimer(q.timeLimit || 20)}
+        <p class="center" style="font-size:14px;">지금까지 <strong style="color:var(--gold);">${answeredCount}</strong>명 응답</p>
+      `;
+  } else if (isManual) {
+    // 수동 채점: 아직 저장 전이면 점수 입력 폼, 저장했으면 결과+순위표
+    if (!hasResult) {
+      body = renderManualScoreForm(idx);
+    } else {
+      const r = quizState.results[idx];
+      const rows = Object.entries(r.manualScores || {})
+        .sort((a, b) => b[1] - a[1])
+        .map(([n, s]) => `<div class="board-row"><span>${esc(n)}</span><span class="score display">${s}점</span></div>`)
+        .join("");
+      const board = computeLeaderboard(quizState).slice(0, 8);
+      const boardHtml = board.length
+        ? `
+          <div style="margin-top:20px;">
+            <div class="eyebrow" style="margin-bottom:8px;">현재까지 순위</div>
+            ${board.map((p, i) => `
+              <div class="board-row ${i === 0 ? "top" : ""}">
+                <div class="row"><span>${i === 0 ? "👑" : (i + 1)}</span><span style="font-weight:600;">${esc(p.nickname)}</span></div>
+                <span class="score display">${p.score}점</span>
+              </div>
+            `).join("")}
+          </div>
+        `
+        : "";
+      body = `<div>${rows}</div>${boardHtml}`;
+    }
   } else {
-    // 마감 후: 결과 공개
+    // 객관식 마감 후: 결과 공개
     const max = Math.max(1, ...liveCounts);
     const bars = q.options.map((opt, i) => {
       const c = liveCounts[i] || 0;
@@ -578,20 +688,24 @@ function renderAdminQuestion() {
     body = `${bars}<p class="center" style="font-size:13px;margin-top:4px;">총 ${answeredCount}명 응답</p>${boardHtml}`;
   }
 
+  const showNextButtons = !isOpen && (!isManual || hasResult);
+
   shell(`
     <div class="card">
       <div class="row" style="justify-content:space-between;">
         <div class="eyebrow" style="margin:0;">문항 ${idx + 1} / ${quizState.questions.length}</div>
-        <span class="badge ${isOpen ? "open" : "closed"}">${isOpen ? "투표 진행중" : "투표 마감"}</span>
+        <span class="badge ${isOpen ? "open" : "closed"}">${isOpen ? (isManual ? "답변 준비중" : "투표 진행중") : (isManual && !hasResult ? "채점 대기" : "마감")}</span>
       </div>
       ${q.text ? `<h2 class="display" style="margin-top:8px;">${esc(q.text)}</h2>` : "<div style='height:8px'></div>"}
       ${body}
       <div style="margin-top:16px;">
         ${isOpen
-          ? `<button class="btn btn-danger" onclick="closeVoting()">■ 지금 바로 마감</button>`
-          : isLast
-            ? `<button class="btn btn-primary" onclick="finishQuiz()">🏆 최종 결과 보기</button>`
-            : `<button class="btn btn-primary" onclick="beginQuestion(${idx + 1})">다음 문항 →</button>`
+          ? `<button class="btn btn-danger" onclick="closeVoting()">■ ${isManual ? "답변 종료, 채점하기" : "지금 바로 마감"}</button>`
+          : showNextButtons
+            ? (isLast
+                ? `<button class="btn btn-primary" onclick="finishQuiz()">🏆 최종 결과 보기</button>`
+                : `<button class="btn btn-primary" onclick="beginQuestion(${idx + 1})">다음 문항 →</button>`)
+            : ""
         }
       </div>
     </div>
@@ -647,6 +761,21 @@ function renderParticipant() {
   if (quizState.phase === "question") {
     const q = quizState.questions[quizState.currentIndex];
     const isOpen = quizState.votingOpen && remainingSec > 0;
+
+    if (q.type === "manual") {
+      const msg = isOpen
+        ? "화면을 보며 답변을 준비하세요. 관리자가 직접 채점해요."
+        : "관리자가 채점 중이에요. 잠시만 기다려주세요.";
+      return shell(`
+        <div class="card">
+          <div class="eyebrow">문항 ${quizState.currentIndex + 1} / ${quizState.questions.length}</div>
+          ${q.text ? `<h2 class="display">${esc(q.text)}</h2>` : "<div style='height:8px'></div>"}
+          ${isOpen ? renderTimer(q.timeLimit || 20) : ""}
+          <p class="center" style="font-size:13px;margin-top:16px;">${msg}</p>
+        </div>
+      `);
+    }
+
     const revealCorrect = !quizState.votingOpen;
     const optsHtml = q.options.map((opt, i) => {
       const isSelected = selected === i;
