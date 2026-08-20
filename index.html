@@ -556,6 +556,12 @@ window.resetAll = async () => {
   render();
 };
 
+window.confirmResetAll = () => {
+  if (confirm("진행 중인 퀴즈를 초기화하고 처음(문항 만들기)부터 다시 시작할까요?\n지금까지의 진행 상황과 참가자 입장 기록이 모두 사라져요.")) {
+    resetAll();
+  }
+};
+
 window.sendChatMessage = async (inputId) => {
   if (!quizState) return;
   const input = document.getElementById(inputId);
@@ -760,6 +766,7 @@ function renderAdminLobby() {
       <button class="btn btn-primary" onclick="beginQuestion(0)">▶ 게임 시작하기</button>
     </div>
     ${renderChatBox("admin-chat-input")}
+    <button class="link-btn" style="justify-content:center;" onclick="confirmResetAll()">↺ 처음부터 새로 시작</button>
   `);
 }
 
@@ -837,6 +844,7 @@ function renderAdminQuestion() {
         }
       </div>
     </div>
+    <button class="link-btn" style="justify-content:center;" onclick="confirmResetAll()">↺ 처음부터 새로 시작</button>
   `);
 }
 
