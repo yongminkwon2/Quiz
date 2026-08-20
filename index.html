@@ -468,17 +468,20 @@ window.beginQuestion = async (idx) => {
   } catch (e) { console.error(e); }
 };
 
+let closingVote = false;
 window.closeVoting = async () => {
+  if (closingVote) return;
+  closingVote = true;
   const idx = quizState.currentIndex;
   const q = quizState.questions[idx];
   quizState = { ...quizState, votingOpen: false };
   render();
-  if (q.type === "manual") {
-    try { await update(ref(db, "quizState"), { votingOpen: false }); } catch (e) { console.error(e); }
-    return;
-  }
-  const startTime = quizState.currentStartTime;
   try {
+    if (q.type === "manual") {
+      await update(ref(db, "quizState"), { votingOpen: false });
+      return;
+    }
+    const startTime = quizState.currentStartTime;
     const snap = await get(ref(db, `answers/${quizState.sessionId}/${idx}`));
     const val = snap.val() || {};
     const counts = new Array(q.options.length).fill(0);
@@ -493,7 +496,14 @@ window.closeVoting = async () => {
     quizState = { ...quizState, results: { ...(quizState.results || {}), [idx]: resultPatch } };
     render();
     await update(ref(db, "quizState"), { [`results/${idx}`]: resultPatch, votingOpen: false });
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    console.error("closeVoting failed:", e);
+    alert("마감 처리 중 오류가 발생했어요. 인터넷 연결을 확인하고 다시 눌러주세요.");
+    quizState = { ...quizState, votingOpen: true };
+    render();
+  } finally {
+    closingVote = false;
+  }
 };
 
 window.finishQuiz = async () => {
