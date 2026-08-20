@@ -458,39 +458,49 @@ window.startQuiz = async () => {
 
 window.beginQuestion = async (idx) => {
   autoClosed = false;
-  await update(ref(db, "quizState"), {
-    phase: "question",
-    currentIndex: idx,
-    votingOpen: true,
-    currentStartTime: Date.now(),
-  });
+  const patch = { phase: "question", currentIndex: idx, votingOpen: true, currentStartTime: Date.now() };
+  quizState = { ...quizState, ...patch };
+  manageListeners();
+  manageTimer();
+  render();
+  try {
+    await update(ref(db, "quizState"), patch);
+  } catch (e) { console.error(e); }
 };
 
 window.closeVoting = async () => {
   const idx = quizState.currentIndex;
   const q = quizState.questions[idx];
+  quizState = { ...quizState, votingOpen: false };
+  render();
   if (q.type === "manual") {
-    await update(ref(db, "quizState"), { votingOpen: false });
+    try { await update(ref(db, "quizState"), { votingOpen: false }); } catch (e) { console.error(e); }
     return;
   }
   const startTime = quizState.currentStartTime;
-  const snap = await get(ref(db, `answers/${quizState.sessionId}/${idx}`));
-  const val = snap.val() || {};
-  const counts = new Array(q.options.length).fill(0);
-  const answers = {};
-  Object.entries(val).forEach(([n, a]) => {
-    if (typeof a.choice === "number") {
-      counts[a.choice]++;
-      answers[n] = { choice: a.choice, elapsedMs: Math.max(0, (a.ts || startTime) - startTime) };
-    }
-  });
-  await update(ref(db, "quizState"), {
-    [`results/${idx}`]: { counts, answers, total: Object.keys(val).length, timeLimit: q.timeLimit || 20 },
-    votingOpen: false,
-  });
+  try {
+    const snap = await get(ref(db, `answers/${quizState.sessionId}/${idx}`));
+    const val = snap.val() || {};
+    const counts = new Array(q.options.length).fill(0);
+    const answers = {};
+    Object.entries(val).forEach(([n, a]) => {
+      if (typeof a.choice === "number") {
+        counts[a.choice]++;
+        answers[n] = { choice: a.choice, elapsedMs: Math.max(0, (a.ts || startTime) - startTime) };
+      }
+    });
+    const resultPatch = { counts, answers, total: Object.keys(val).length, timeLimit: q.timeLimit || 20 };
+    quizState = { ...quizState, results: { ...(quizState.results || {}), [idx]: resultPatch } };
+    render();
+    await update(ref(db, "quizState"), { [`results/${idx}`]: resultPatch, votingOpen: false });
+  } catch (e) { console.error(e); }
 };
 
-window.finishQuiz = async () => { await set(ref(db, "quizState/phase"), "finished"); };
+window.finishQuiz = async () => {
+  quizState = { ...quizState, phase: "finished" };
+  render();
+  try { await set(ref(db, "quizState/phase"), "finished"); } catch (e) { console.error(e); }
+};
 
 window.updateManualScoreByIndex = (i, v) => {
   const n = manualParticipantNames[i];
@@ -498,9 +508,12 @@ window.updateManualScoreByIndex = (i, v) => {
 };
 
 window.saveManualScores = async (idx) => {
-  await update(ref(db, "quizState"), {
-    [`results/${idx}`]: { type: "manual", manualScores: { ...manualDraftScores } },
-  });
+  const resultPatch = { type: "manual", manualScores: { ...manualDraftScores } };
+  quizState = { ...quizState, results: { ...(quizState.results || {}), [idx]: resultPatch } };
+  render();
+  try {
+    await update(ref(db, "quizState"), { [`results/${idx}`]: resultPatch });
+  } catch (e) { console.error(e); }
 };
 
 function renderManualScoreForm(idx) {
@@ -575,9 +588,11 @@ window.joinQuiz = async () => {
   const name = input.value.trim();
   if (!name || !quizState) return;
   nickname = name;
-  await set(ref(db, `participants/${quizState.sessionId}/${name}`), { joinedAt: Date.now() });
   joined = true;
   render();
+  try {
+    await set(ref(db, `participants/${quizState.sessionId}/${name}`), { joinedAt: Date.now() });
+  } catch (e) { console.error(e); }
 };
 
 window.updateManualAnswerDraft = (v) => { manualAnswerDraft = v; };
@@ -587,19 +602,23 @@ window.submitManualAnswer = async () => {
   const text = manualAnswerDraft.trim();
   if (!text) return;
   submitted = true;
-  await set(ref(db, `answers/${quizState.sessionId}/${quizState.currentIndex}/${nickname}`), {
-    text: text.slice(0, 300),
-    ts: Date.now(),
-  });
   render();
+  try {
+    await set(ref(db, `answers/${quizState.sessionId}/${quizState.currentIndex}/${nickname}`), {
+      text: text.slice(0, 300),
+      ts: Date.now(),
+    });
+  } catch (e) { console.error(e); }
 };
 
 window.submitAnswer = async (idx) => {
   if (!quizState.votingOpen || remainingSec <= 0) return;
   selected = idx;
   submitted = true;
-  await set(ref(db, `answers/${quizState.sessionId}/${quizState.currentIndex}/${nickname}`), { choice: idx, ts: Date.now() });
   render();
+  try {
+    await set(ref(db, `answers/${quizState.sessionId}/${quizState.currentIndex}/${nickname}`), { choice: idx, ts: Date.now() });
+  } catch (e) { console.error(e); }
 };
 
 // ---------- render ----------
