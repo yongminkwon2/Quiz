@@ -371,6 +371,36 @@ function computeLeaderboard(qs) {
   return Object.entries(scores).map(([nickname, score]) => ({ nickname, score })).sort((a, b) => b.score - a.score);
 }
 
+function renderLeaderboardBlock(limit, forNickname) {
+  const board = computeLeaderboard(quizState);
+  if (!board.length) return "";
+  const top = board.slice(0, limit);
+  let myLine = "";
+  if (forNickname) {
+    const myIdx = board.findIndex((p) => p.nickname === forNickname);
+    if (myIdx >= limit) {
+      myLine = `
+        <div class="board-row" style="border:1px dashed var(--border);">
+          <span>${myIdx + 1}. ${esc(forNickname)} (나)</span>
+          <span class="score display">${fmtScore(board[myIdx].score)}점</span>
+        </div>
+      `;
+    }
+  }
+  return `
+    <div style="margin-top:20px;">
+      <div class="eyebrow" style="margin-bottom:8px;">현재까지 순위</div>
+      ${top.map((p, i) => `
+        <div class="board-row ${i === 0 ? "top" : ""}">
+          <div class="row"><span>${i === 0 ? "👑" : (i + 1)}</span><span style="font-weight:600;">${esc(p.nickname)}</span></div>
+          <span class="score display">${fmtScore(p.score)}점</span>
+        </div>
+      `).join("")}
+      ${myLine}
+    </div>
+  `;
+}
+
 function esc(s) { const d = document.createElement("div"); d.innerText = s; return d.innerHTML; }
 
 // ---------- actions ----------
@@ -734,21 +764,7 @@ function renderAdminQuestion() {
         .sort((a, b) => b[1] - a[1])
         .map(([n, s]) => `<div class="board-row"><span>${esc(n)}</span><span class="score display">${fmtScore(s)}점</span></div>`)
         .join("");
-      const board = computeLeaderboard(quizState).slice(0, 8);
-      const boardHtml = board.length
-        ? `
-          <div style="margin-top:20px;">
-            <div class="eyebrow" style="margin-bottom:8px;">현재까지 순위</div>
-            ${board.map((p, i) => `
-              <div class="board-row ${i === 0 ? "top" : ""}">
-                <div class="row"><span>${i === 0 ? "👑" : (i + 1)}</span><span style="font-weight:600;">${esc(p.nickname)}</span></div>
-                <span class="score display">${fmtScore(p.score)}점</span>
-              </div>
-            `).join("")}
-          </div>
-        `
-        : "";
-      body = `<div>${rows}</div>${boardHtml}`;
+      body = `<div>${rows}</div>${renderLeaderboardBlock(8)}`;
     }
   } else {
     // 객관식 마감 후: 결과 공개
@@ -767,21 +783,7 @@ function renderAdminQuestion() {
     const answerLine = (q.correctIndex !== null && q.correctIndex !== undefined)
       ? `<p class="center" style="color:var(--gold);font-weight:700;font-size:15px;margin:0 0 12px;">🎯 정답: ${esc(q.options[q.correctIndex])}</p>`
       : "";
-    const board = computeLeaderboard(quizState).slice(0, 8);
-    const boardHtml = board.length
-      ? `
-        <div style="margin-top:20px;">
-          <div class="eyebrow" style="margin-bottom:8px;">현재까지 순위</div>
-          ${board.map((p, i) => `
-            <div class="board-row ${i === 0 ? "top" : ""}">
-              <div class="row"><span>${i === 0 ? "👑" : (i + 1)}</span><span style="font-weight:600;">${esc(p.nickname)}</span></div>
-              <span class="score display">${fmtScore(p.score)}점</span>
-            </div>
-          `).join("")}
-        </div>
-      `
-      : "";
-    body = `${answerLine}${bars}<p class="center" style="font-size:13px;margin-top:4px;">총 ${answeredCount}명 응답</p>${boardHtml}`;
+    body = `${answerLine}${bars}<p class="center" style="font-size:13px;margin-top:4px;">총 ${answeredCount}명 응답</p>${renderLeaderboardBlock(8)}`;
   }
 
   const showNextButtons = !isOpen && (!isManual || hasResult);
@@ -873,6 +875,7 @@ function renderParticipant() {
             <button class="btn btn-primary" style="margin-top:10px;" onclick="submitManualAnswer()">제출하기</button>
           ` : ""}
           <p class="center" style="font-size:13px;margin-top:16px;">${msg}</p>
+          ${!isOpen ? renderLeaderboardBlock(5, nickname) : ""}
         </div>
       `);
     }
@@ -898,6 +901,7 @@ function renderParticipant() {
         <div style="display:flex;flex-direction:column;gap:10px;">${optsHtml}</div>
         <p class="center" style="font-size:13px;margin-top:16px;">${msg}</p>
         ${answerLine}
+        ${revealCorrect ? renderLeaderboardBlock(5, nickname) : ""}
       </div>
     `);
   }
