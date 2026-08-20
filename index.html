@@ -183,7 +183,7 @@ let manualParticipantAnswers = {};
 let manualAnswerDraft = "";
 
 function emptyQuestion() {
-  return { text: "", type: "mc", options: ["선택지 1", "선택지 2", "선택지 3", "선택지 4"], correctIndex: null, timeLimit: 20, basePoints: 2, speedBonus: true };
+  return { text: "", type: "mc", options: ["선택지 1", "선택지 2", "선택지 3", "선택지 4"], optionPoints: [0, 0, 0, 0], timeLimit: 20, speedBonus: true };
 }
 
 // ---------- scoring ----------
@@ -360,10 +360,10 @@ function computeLeaderboard(qs) {
       Object.entries(r.manualScores).forEach(([n, pts]) => {
         scores[n] = (scores[n] || 0) + (Number(pts) || 0);
       });
-    } else if (q.correctIndex !== null && q.correctIndex !== undefined) {
+    } else if (q.type !== "manual") {
       Object.entries(r.answers || {}).forEach(([n, a]) => {
-        const isCorrect = a.choice === q.correctIndex;
-        const pts = isCorrect ? calcPoints(a.elapsedMs || 0, r.timeLimit || q.timeLimit || 20, q.basePoints, q.speedBonus) : 0;
+        const optPts = (q.optionPoints && q.optionPoints[a.choice]) || 0;
+        const pts = optPts > 0 ? calcPoints(a.elapsedMs || 0, r.timeLimit || q.timeLimit || 20, optPts, q.speedBonus) : 0;
         scores[n] = (scores[n] || 0) + pts;
       });
     }
@@ -427,26 +427,27 @@ window.submitAdminPassword = () => {
 window.addDraftQuestion = () => { draftQuestions.push(emptyQuestion()); render(); };
 window.removeDraftQuestion = (i) => { draftQuestions.splice(i, 1); render(); };
 window.setDraftType = (i, type) => { draftQuestions[i].type = type; render(); };
-window.updateDraftPoints = (i, v) => { draftQuestions[i].basePoints = Math.max(1, Math.min(10, parseInt(v) || 2)); };
 window.toggleDraftSpeedBonus = (i) => { draftQuestions[i].speedBonus = !draftQuestions[i].speedBonus; render(); };
 window.updateDraftText = (i, v) => { draftQuestions[i].text = v; };
 window.updateDraftTime = (i, v) => { draftQuestions[i].timeLimit = Math.max(5, Math.min(120, parseInt(v) || 20)); };
 window.updateDraftOption = (qi, oi, v) => { draftQuestions[qi].options[oi] = v; };
+window.updateDraftOptionPoints = (qi, oi, v) => {
+  draftQuestions[qi].optionPoints[oi] = Math.max(0, Math.min(10, parseInt(v) || 0));
+};
 window.addDraftOption = (qi) => {
-  if (draftQuestions[qi].options.length < 6) { draftQuestions[qi].options.push("선택지 " + (draftQuestions[qi].options.length + 1)); render(); }
+  if (draftQuestions[qi].options.length < 6) {
+    draftQuestions[qi].options.push("선택지 " + (draftQuestions[qi].options.length + 1));
+    draftQuestions[qi].optionPoints.push(0);
+    render();
+  }
 };
 window.removeDraftOption = (qi, oi) => {
   const q = draftQuestions[qi];
   if (q.options.length > 2) {
     q.options.splice(oi, 1);
-    if (q.correctIndex === oi) q.correctIndex = null;
-    else if (q.correctIndex > oi) q.correctIndex -= 1;
+    q.optionPoints.splice(oi, 1);
     render();
   }
-};
-window.toggleCorrect = (qi, oi) => {
-  draftQuestions[qi].correctIndex = draftQuestions[qi].correctIndex === oi ? null : oi;
-  render();
 };
 
 window.startQuiz = async () => {
@@ -682,10 +683,6 @@ function renderAdminSetup() {
       ${q.type === "manual"
         ? `<p style="font-size:12px;margin:0;">이 문항은 정답이 없어요. 문항이 끝나면 관리자가 참가자별로 점수를 직접 입력해서 채점해요.</p>`
         : `
-          <div class="row">
-            <span style="font-size:13px;color:var(--muted);white-space:nowrap;">🏆 배점(1~10점)</span>
-            <input class="input input-sm" type="number" min="1" max="10" step="1" style="width:90px;" value="${q.basePoints}" oninput="updateDraftPoints(${qi}, this.value)" />
-          </div>
           <div class="row" style="justify-content:space-between;">
             <span style="font-size:13px;color:var(--muted);">⚡ 빠른 정답 가산점</span>
             <div class="type-toggle" style="width:140px;">
@@ -694,19 +691,19 @@ function renderAdminSetup() {
             </div>
           </div>
           <p style="font-size:11px;margin:0;color:var(--muted);">
-            ${q.speedBonus ? `정답이면 기본 ${q.basePoints}점, 빠르게 답할수록 0~1점 사이 보너스가 더해져요 (예: ${q.basePoints}점 + 0.2점 = ${(q.basePoints + 0.2).toFixed(1)}점).` : `정답이면 시간과 무관하게 항상 ${q.basePoints}점을 받아요.`}
+            ${q.speedBonus ? "점수가 있는 선택지를 빠르게 고를수록 0~1점 사이 보너스가 자동으로 더해져요." : "선택지에 설정한 점수를 시간과 무관하게 그대로 받아요."}
           </p>
           <div style="display:flex;flex-direction:column;gap:8px;">
             ${q.options.map((opt, oi) => `
               <div class="opt-row">
-                <button class="dot ${q.correctIndex === oi ? "on" : ""}" onclick="toggleCorrect(${qi},${oi})">✓</button>
                 <input class="input" value="${esc(opt)}" oninput="updateDraftOption(${qi},${oi}, this.value)" />
+                <input class="input input-sm" type="number" min="0" max="10" step="1" style="width:64px;" value="${q.optionPoints[oi]}" oninput="updateDraftOptionPoints(${qi},${oi}, this.value)" />
                 ${q.options.length > 2 ? `<button class="icon-btn" onclick="removeDraftOption(${qi},${oi});render()">✕</button>` : ""}
               </div>
             `).join("")}
           </div>
           ${q.options.length < 6 ? `<button class="link-btn" onclick="addDraftOption(${qi})">+ 선택지 추가</button>` : ""}
-          <p style="font-size:11px;margin:0;">정답을 표시해야 자동으로 채점돼요 (표시 안 하면 투표 전용 문항이 돼요)</p>
+          <p style="font-size:11px;margin:0;">선택지 옆 숫자(0~10)가 그 선택지를 골랐을 때 받는 점수예요. 여러 선택지에 서로 다른 점수를 줄 수 있고, 0점이면 오답 처리돼요.</p>
         `
       }
     </div>
@@ -769,19 +766,23 @@ function renderAdminQuestion() {
   } else {
     // 객관식 마감 후: 결과 공개
     const max = Math.max(1, ...liveCounts);
+    const opPts = q.optionPoints || [];
+    const maxPts = Math.max(0, ...opPts);
     const bars = q.options.map((opt, i) => {
       const c = liveCounts[i] || 0;
       const pct = Math.round((c / max) * 100);
-      const isCorrect = q.correctIndex === i;
+      const pts = opPts[i] || 0;
+      const isTop = maxPts > 0 && pts === maxPts;
       return `
         <div class="bar-row">
-          <div class="bar-label"><span>${esc(opt)}</span><span>${c}</span></div>
-          <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${isCorrect ? "var(--gold)" : COLORS[i % COLORS.length]};"></div></div>
+          <div class="bar-label"><span>${esc(opt)}${pts > 0 ? ` <span style="color:var(--gold);font-weight:700;">+${pts}점</span>` : ""}</span><span>${c}</span></div>
+          <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${isTop ? "var(--gold)" : COLORS[i % COLORS.length]};"></div></div>
         </div>
       `;
     }).join("");
-    const answerLine = (q.correctIndex !== null && q.correctIndex !== undefined)
-      ? `<p class="center" style="color:var(--gold);font-weight:700;font-size:15px;margin:0 0 12px;">🎯 정답: ${esc(q.options[q.correctIndex])}</p>`
+    const topIdx = opPts.indexOf(maxPts);
+    const answerLine = maxPts > 0
+      ? `<p class="center" style="color:var(--gold);font-weight:700;font-size:15px;margin:0 0 12px;">🎯 최고 배점: ${esc(q.options[topIdx])} (${maxPts}점)</p>`
       : "";
     body = `${answerLine}${bars}<p class="center" style="font-size:13px;margin-top:4px;">총 ${answeredCount}명 응답</p>${renderLeaderboardBlock(8)}`;
   }
@@ -881,17 +882,21 @@ function renderParticipant() {
     }
 
     const revealCorrect = !quizState.votingOpen;
+    const opPts = q.optionPoints || [];
+    const maxPts = Math.max(0, ...opPts);
     const optsHtml = q.options.map((opt, i) => {
       const isSelected = selected === i;
-      const showCorrect = revealCorrect && q.correctIndex === i;
-      const cls = showCorrect ? "correct" : (isSelected ? "selected" : "");
-      return `<button class="opt-btn ${cls}" ${!isOpen ? "disabled" : ""} onclick="submitAnswer(${i})">${esc(opt)} ${showCorrect ? "✓" : ""}</button>`;
+      const pts = opPts[i] || 0;
+      const showPts = revealCorrect && pts > 0;
+      const cls = showPts ? "correct" : (isSelected ? "selected" : "");
+      return `<button class="opt-btn ${cls}" ${!isOpen ? "disabled" : ""} onclick="submitAnswer(${i})">${esc(opt)} ${showPts ? `(+${pts}점)` : ""}</button>`;
     }).join("");
     const msg = revealCorrect
       ? "투표가 마감됐어요. 다음 문항을 기다려주세요."
       : (submitted ? "제출 완료! 마감 전까지 선택을 바꿀 수 있어요." : "선택지를 눌러 제출하세요. 빠를수록 점수가 높아요!");
-    const answerLine = (revealCorrect && q.correctIndex !== null && q.correctIndex !== undefined)
-      ? `<p class="center" style="color:var(--gold);font-weight:700;font-size:15px;margin:8px 0 0;">🎯 정답: ${esc(q.options[q.correctIndex])}</p>`
+    const topIdx = opPts.indexOf(maxPts);
+    const answerLine = (revealCorrect && maxPts > 0)
+      ? `<p class="center" style="color:var(--gold);font-weight:700;font-size:15px;margin:8px 0 0;">🎯 최고 배점: ${esc(q.options[topIdx])} (${maxPts}점)</p>`
       : "";
     return shell(`
       <div class="card">
